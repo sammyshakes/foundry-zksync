@@ -35,18 +35,18 @@ use ethers::{
     prelude::{artifacts::Source, remappings::RelativeRemapping, Solc},
     solc::{
         artifacts::{output_selection::FileOutputSelection, StandardJsonCompilerInput},
-        Graph, Project,
+        project, AllowedLibPaths, Graph, Project,
     },
 };
 use regex::Regex;
 use semver::Version;
 use serde_json::Value;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt, fs,
     fs::File,
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{exit, Command, Stdio},
 };
 
@@ -225,9 +225,33 @@ impl ZkSolc {
         self.configure_solc();
         self.configure_compiler_output_settings();
         let sources = self.sources.clone().unwrap();
+        // //---------------------------------------//
+        // // Specify the output folder for debug output
+        // let output_folder = "sources_output";
+        // // Construct the complete file path
+        // let mut file_path = PathBuf::from(output_folder);
+        // file_path.push("sources.json");
+        // //write the sources to file
+        // // Create the output folder if it doesn't exist
+        // if let Some(parent) = file_path.parent() {
+        //     std::fs::create_dir_all(parent)
+        //         .map_err(|e| Error::msg(format!("Failed to create output folder: {}", e)))?;
+        // }
+
+        // let file = File::create(file_path.clone())
+        //     .map_err(|e| Error::msg(format!("Failed to create file: {}", e)))?;
+        // let pretty_json = serde_json::to_string_pretty(&sources)
+        //     .map_err(|e| Error::msg(format!("Failed to serialize to JSON: {}", e)))?;
+        // std::fs::write(file_path, pretty_json.as_bytes())
+        //     .map_err(|e| Error::msg(format!("Failed to write to file: {}", e)))?;
+        // //---------------------------------------//
+
         let mut displayed_warnings = HashSet::new();
 
-        // Step 2: Compile Contracts for Each Source
+        let project_root_path = self.project.paths.root.clone();
+        println!("project_root_path: {:?}", project_root_path);
+
+        // Compile Contracts for Each Source
         for (solc, version) in sources {
             //configure project solc for each solc version
             for source in version.1 {
@@ -241,10 +265,70 @@ impl ZkSolc {
                 // Skip this file if it's not in the 'sources' directory or its subdirectories
                 if !is_in_sources_dir {
                     continue;
+                } else {
                 }
 
                 // get standard_json for this contract
                 let mut standard_json = self.project.standard_json_input(&contract_path).unwrap();
+
+                // Get the contract filename
+                let filename = contract_path
+                    .file_name()
+                    .expect("Failed to extract filename")
+                    .to_str()
+                    .expect("Failed to convert filename to str");
+
+                //---------------------------------------//
+                // Specify the output folder for debug output
+                let output_folder = "test1_output";
+                // Construct the complete file path
+                let mut file_path = PathBuf::from(output_folder);
+                file_path.push(format!("{}.json", filename));
+                write_json_to_file(&file_path, &standard_json)?;
+                println!("Data written to {:?}", file_path);
+                //---------------------------------------//
+
+                // let mut new_sources: HashMap<PathBuf, Source> = HashMap::new();
+
+                // for (path, source) in &standard_json.sources {
+                //     // let mut replace = None;
+
+                //     for (existing_path, existing_source) in &new_sources.clone() {
+                //         // Check if the source content is identical
+                //         if existing_source.content == source.content {
+                //             println!(
+                //                 "Found identical source content for {:?} and {:?}",
+                //                 path, existing_path
+                //             );
+                //             // Identify if the new path is shorter than the existing path
+                //             // If so, mark the existing path for replacement
+                //             if path.to_str().unwrap().len() < existing_path.to_str().unwrap().len()
+                //             {
+                //                 // replace = Some(existing_path.clone());
+                //                 new_sources.remove(existing_path);
+                //                 new_sources.insert(path.clone(), source.clone());
+                //             }
+                //             break;
+                //         }
+                //     }
+
+                //     // if let Some(replace_path) = replace {
+                //     //     new_sources.remove(&replace_path);
+                //     // }
+
+                //     // new_sources.insert(path.clone(), source.clone());
+                // }
+
+                // standard_json.sources = new_sources.into_iter().collect();
+
+                //---------------------------------------//
+                // Specify the output folder for debug output
+                let output_folder = "test3_output";
+                // Construct the complete file path for debug output
+                let mut file_path = PathBuf::from(output_folder);
+                file_path.push(filename.to_owned() + ".json");
+                write_json_to_file(&file_path, &standard_json)?;
+                //---------------------------------------//
 
                 // Apply remappings for each contract dependency
                 for _source in &mut standard_json.sources {
@@ -252,7 +336,27 @@ impl ZkSolc {
                         self.remap_source_content(_source.1.content.to_string()).into();
                 }
 
-                self.standard_json = Some(standard_json);
+                // Apply remappings for each contract dependency
+                // for _source in &mut new_sources {
+                //     _source.1.content =
+                //         self.remap_source_content(_source.1.content.to_string()).into();
+                // }
+
+                self.standard_json = Some(standard_json.clone());
+
+                println!(
+                    "self.standard_json.settings: {:?}",
+                    self.standard_json.clone().unwrap().settings
+                );
+
+                //---------------------------------------//
+                // Specify the output folder for debug output
+                let output_folder = "test2_output";
+                // Construct the complete file path for debug output
+                let mut file_path = PathBuf::from(output_folder);
+                file_path.push(filename.to_owned() + ".json");
+                write_json_to_file(&file_path, &self.standard_json.as_ref().unwrap())?;
+                //---------------------------------------//
 
                 // Step 3: Parse JSON Input for each Source
                 if let Err(err) = self.parse_json_input(&contract_path) {
@@ -265,7 +369,7 @@ impl ZkSolc {
                 // Step 5: Run Compiler and Handle Output
                 let mut cmd = Command::new(&self.compiler_path);
                 let mut child = cmd
-                    .arg(contract_path.clone())
+                    // .arg(contract_path.clone())
                     .args(&comp_args)
                     .stdin(Stdio::piped())
                     .stderr(Stdio::piped())
@@ -273,9 +377,11 @@ impl ZkSolc {
                     .spawn();
                 let stdin = child.as_mut().unwrap().stdin.take().expect("Stdin exists.");
 
-                serde_json::to_writer(stdin, &self.standard_json.clone().unwrap()).map_err(
-                    |e| Error::msg(format!("Could not assign standard_json to writer: {}", e)),
-                )?;
+                serde_json::to_writer(stdin, &standard_json).map_err(|e| {
+                    Error::msg(format!("Could not assign standard_json to writer: {}", e))
+                })?;
+
+                println!("after compile: +=====================+");
 
                 let output = child
                     .unwrap()
@@ -292,21 +398,7 @@ impl ZkSolc {
                     )));
                 }
 
-                let filename = contract_path
-                    .to_str()
-                    .expect("Unable to convert source to string")
-                    .split(
-                        self.project
-                            .paths
-                            .root
-                            .to_str()
-                            .expect("Unable to convert source to string"),
-                    )
-                    .nth(1)
-                    .expect("Failed to get Contract relative path")
-                    .split('/')
-                    .last()
-                    .expect("Failed to get Contract filename.");
+                println!("filename: {}", filename);
 
                 // Step 6: Handle Output (Errors and Warnings)
                 self.handle_output(output, filename.to_string(), &mut displayed_warnings);
@@ -338,11 +430,22 @@ impl ZkSolc {
             .unwrap_or_else(|| panic!("Error configuring solc compiler."))
             .to_string();
 
+        println!("allow paths: {}", self.project.allowed_paths);
+        self.project.allowed_paths = AllowedLibPaths::default();
+        println!("allow paths after: {}", self.project.allowed_paths);
+
         // Build compiler arguments
         let mut comp_args = Vec::<String>::new();
+        comp_args.push(contract_path.to_str().unwrap().to_string());
         comp_args.push("--standard-json".to_string());
         comp_args.push("--solc".to_string());
         comp_args.push(solc_path.to_owned());
+        comp_args.push("--base-path".to_string());
+        comp_args.push(self.project.paths.root.to_str().unwrap().to_string());
+        comp_args.push("--allow-paths".to_string());
+        comp_args.push(self.project.paths.root.to_str().unwrap().to_string());
+        // comp_args.push("--include-path".to_string());
+        // comp_args.push(self.project.allowed_paths);
 
         // Check if system mode is enabled or if the source path contains "is-system"
         if self.is_system || contract_path.to_str().unwrap().contains("is-system") {
@@ -832,7 +935,8 @@ fn replace_imports_with_placeholders(content: String, remappings: &[RelativeRema
         let placeholder = format!("REMAP_PLACEHOLDER_{}", i);
 
         // Define a pattern that matches the import statement, capturing the rest of the path
-        let pattern = format!(r#"import\s+"{}(?P<rest>[^"]*)""#, regex::escape(&remapping.name));
+        let pattern =
+            format!(r#"import\s+[\"']{}(?P<rest>[^\"']*)[\"']"#, regex::escape(&remapping.name));
 
         // Define a replacement that includes the placeholder and the captured rest of the path
         let replacement = format!(r#"import "{}$rest""#, placeholder);
@@ -867,6 +971,8 @@ fn substitute_remapped_paths(content: String, remappings: &[RelativeRemapping]) 
             let placeholder = format!("REMAP_PLACEHOLDER_{}", i);
             let import_path = r.path.path.to_str().unwrap();
 
+            println!("import_path: {}", import_path);
+
             // Replace all instances of the placeholder with the remapped path
             let new_substituted = substituted.replace(&placeholder, &import_path);
 
@@ -883,4 +989,46 @@ fn substitute_remapped_paths(content: String, remappings: &[RelativeRemapping]) 
     }
 
     substituted
+}
+
+fn remap_source_key(source_key: &str, remappings: &[(String, String)]) -> String {
+    let path = Path::new(source_key);
+
+    for (prefix, replacement_path) in remappings {
+        if let Ok(stripped) = path.strip_prefix(prefix) {
+            return Path::new(replacement_path).join(stripped).to_str().unwrap().to_owned();
+        }
+    }
+
+    source_key.to_owned()
+}
+
+fn write_json_to_file(path: &Path, json: &StandardJsonCompilerInput) -> Result<(), Error> {
+    // Create the output folder if it doesn't exist
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| Error::msg(format!("Failed to create output folder: {}", e)))?;
+    }
+
+    let file =
+        File::create(path).map_err(|e| Error::msg(format!("Failed to create file: {}", e)))?;
+    let pretty_json = serde_json::to_string_pretty(json)
+        .map_err(|e| Error::msg(format!("Failed to serialize to JSON: {}", e)))?;
+    std::fs::write(path, pretty_json.as_bytes())
+        .map_err(|e| Error::msg(format!("Failed to write to file: {}", e)))?;
+
+    Ok(())
+}
+
+fn transform_path(p: &str) -> PathBuf {
+    let path = Path::new(p);
+
+    // Collect path components into a vector
+    let components: Vec<_> = path.iter().collect();
+
+    // Find the last occurrence of "node_modules" in the path
+    let node_modules_index = components.iter().rposition(|&x| x == "node_modules").unwrap_or(0);
+
+    // Create a new path with only the components after the last "node_modules"
+    components.into_iter().skip(node_modules_index).collect::<PathBuf>()
 }
