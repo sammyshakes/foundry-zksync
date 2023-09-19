@@ -201,6 +201,10 @@ impl ZkSolc {
         let sources = self.sources.clone().ok_or_else(|| Error::msg("Sources not found"))?;
         let mut displayed_warnings = HashSet::new();
 
+        println!("allow paths: {}", self.project.allowed_paths);
+        // self.project.allowed_paths = AllowedLibPaths::default();
+        // println!("allow paths after: {}", self.project.allowed_paths);
+
         //  Compile Contracts for Each Source
         for (solc, version) in sources {
             //configure project solc for each solc version
@@ -303,9 +307,14 @@ impl ZkSolc {
 
         // Build compiler arguments
         let mut comp_args = Vec::<String>::new();
+        // comp_args.push(contract_path.to_str().unwrap().to_string());
         comp_args.push("--standard-json".to_string());
         comp_args.push("--solc".to_string());
-        comp_args.push(solc_path);
+        comp_args.push(solc_path.to_owned());
+        comp_args.push("--base-path".to_string());
+        comp_args.push(self.project.paths.root.to_str().unwrap().to_string());
+        comp_args.push("--allow-paths".to_string());
+        comp_args.push(self.project.allowed_paths.to_string());
 
         // Check if system mode is enabled or if the source path contains "is-system"
         if self.is_system || contract_path.to_str().unwrap().contains("is-system") {
@@ -794,14 +803,27 @@ fn replace_imports_with_placeholders(content: String, remappings: &[RelativeRema
         // Create a placeholder based on the remapping name and index
         let placeholder = format!("REMAP_PLACEHOLDER_{}", i);
 
+        // // Define a pattern that matches the import statement, capturing the rest of the path
+        // let pattern = format!(
+        //     r#"import\s+(?:\{{.*\}}\s+from\s+)?"{}(?P<rest>[^"]*)""#,
+        //     regex::escape(&remapping.name)
+        // );
+
+        // // Define a replacement that includes the placeholder and the captured rest of the path
+        // let replacement = format!(r#"import "{}$rest""#, placeholder);
+
         // Define a pattern that matches the import statement, capturing the rest of the path
         let pattern = format!(
-            r#"import\s+(?:\{{.*\}}\s+from\s+)?"{}(?P<rest>[^"]*)""#,
+            r#"import\s+((?:\{{.*?\}}\s+from\s+)?)\s*"{}(?P<rest>[^"]*)""#,
             regex::escape(&remapping.name)
         );
 
+        println!("pattern: {}", pattern);
+
         // Define a replacement that includes the placeholder and the captured rest of the path
-        let replacement = format!(r#"import "{}$rest""#, placeholder);
+        let replacement = format!(r#"import {}"{}$rest""#, "$1", placeholder);
+
+        println!("replacement: {}", replacement);
 
         // Replace all instances of the pattern with the replacement
         replaced_content =
@@ -832,6 +854,9 @@ fn substitute_remapped_paths(content: String, remappings: &[RelativeRemapping]) 
             // Create the placeholder based on the index
             let placeholder = format!("REMAP_PLACEHOLDER_{}", i);
             let import_path = r.path.path.to_str().unwrap();
+
+            println!("placeholder: {}", placeholder);
+            println!("import_path: {}", import_path);
 
             // Replace all instances of the placeholder with the remapped path
             let new_substituted = substituted.replace(&placeholder, &import_path);
