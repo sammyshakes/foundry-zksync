@@ -224,7 +224,7 @@ impl ZkSolc {
 
                 // Apply remappings for each contract dependency
                 for (_path, _source) in &mut standard_json.sources {
-                    remap_source_path(_path, &self.remappings);
+                    // remap_source_path(_path, &self.remappings);
                     _source.content = self.remap_source_content(_source.content.to_string()).into();
                 }
 
@@ -257,6 +257,10 @@ impl ZkSolc {
                     .unwrap()
                     .wait_with_output()
                     .map_err(|e| Error::msg(format!("Could not run compiler cmd: {}", e)))?;
+
+                if !output.status.success() && output.stderr.len() <= 3 {
+                    continue;
+                }
 
                 if !output.status.success() {
                     return Err(Error::msg(format!(
@@ -305,6 +309,8 @@ impl ZkSolc {
             .unwrap_or_else(|| panic!("Error configuring solc compiler."))
             .to_string();
 
+        println!("project paths: {:?}", self.project.paths);
+
         // Build compiler arguments
         let mut comp_args = Vec::<String>::new();
         // comp_args.push(contract_path.to_str().unwrap().to_string());
@@ -315,6 +321,14 @@ impl ZkSolc {
         comp_args.push(self.project.paths.root.to_str().unwrap().to_string());
         comp_args.push("--allow-paths".to_string());
         comp_args.push(self.project.allowed_paths.to_string());
+        comp_args.push("--include-path".to_string());
+        comp_args.push("../../node_modules".to_string());
+        comp_args.push("--include-path".to_string());
+        comp_args.push(self.project.paths.libraries.first().unwrap().to_str().unwrap().to_string());
+        // comp_args.push("--include-path".to_string());
+        // comp_args.push("../../packages/contracts/node_modules".to_string());
+        // comp_args.push("--include-path".to_string());
+        // comp_args.push("../../packages/contracts".to_string());
 
         // Check if system mode is enabled or if the source path contains "is-system"
         if self.is_system || contract_path.to_str().unwrap().contains("is-system") {
@@ -717,13 +731,6 @@ impl ZkSolc {
     /// # Arguments
     ///
     /// * `self` - A mutable reference to the `ZkSolc` instance.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// // Configure compiler output settings
-    /// zksolc.configure_compiler_output_settings();
-    /// ```
     fn configure_compiler_output_settings(&mut self) {
         // Configure File Output Selection
         let mut file_output_selection: FileOutputSelection = BTreeMap::default();
@@ -803,27 +810,18 @@ fn replace_imports_with_placeholders(content: String, remappings: &[RelativeRema
         // Create a placeholder based on the remapping name and index
         let placeholder = format!("REMAP_PLACEHOLDER_{}", i);
 
-        // // Define a pattern that matches the import statement, capturing the rest of the path
-        // let pattern = format!(
-        //     r#"import\s+(?:\{{.*\}}\s+from\s+)?"{}(?P<rest>[^"]*)""#,
-        //     regex::escape(&remapping.name)
-        // );
-
-        // // Define a replacement that includes the placeholder and the captured rest of the path
-        // let replacement = format!(r#"import "{}$rest""#, placeholder);
-
         // Define a pattern that matches the import statement, capturing the rest of the path
         let pattern = format!(
             r#"import\s+((?:\{{.*?\}}\s+from\s+)?)\s*"{}(?P<rest>[^"]*)""#,
             regex::escape(&remapping.name)
         );
 
-        println!("pattern: {}", pattern);
+        // println!("pattern: {}", pattern);
 
         // Define a replacement that includes the placeholder and the captured rest of the path
         let replacement = format!(r#"import {}"{}$rest""#, "$1", placeholder);
 
-        println!("replacement: {}", replacement);
+        // println!("replacement: {}", replacement);
 
         // Replace all instances of the pattern with the replacement
         replaced_content =
@@ -855,8 +853,8 @@ fn substitute_remapped_paths(content: String, remappings: &[RelativeRemapping]) 
             let placeholder = format!("REMAP_PLACEHOLDER_{}", i);
             let import_path = r.path.path.to_str().unwrap();
 
-            println!("placeholder: {}", placeholder);
-            println!("import_path: {}", import_path);
+            // println!("placeholder: {}", placeholder);
+            // println!("import_path: {}", import_path);
 
             // Replace all instances of the placeholder with the remapped path
             let new_substituted = substituted.replace(&placeholder, &import_path);
@@ -910,6 +908,7 @@ fn remap_source_path(source_path: &mut PathBuf, remappings: &[RelativeRemapping]
         // If a split occurs, parts.next() will be Some(...), and we reconstruct the path using the replacement path
         if let Some(_before) = parts.next() {
             if let Some(after) = parts.next() {
+                println!("before: {}, after: {}", _before, after);
                 *source_path = r.path.path.join(after);
                 break;
             }
