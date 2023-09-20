@@ -46,7 +46,7 @@ use std::{
     fmt, fs,
     fs::File,
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{exit, Command, Stdio},
 };
 
@@ -222,9 +222,25 @@ impl ZkSolc {
                 // get standard_json for this contract
                 let mut standard_json = self.project.standard_json_input(&contract_path).unwrap();
 
+                //Get filename from contract_path
+                let filename = contract_path
+                    .file_name()
+                    .expect("Failed to extract filename")
+                    .to_str()
+                    .expect("Failed to convert filename to str");
+
+                //---------------------------------------//
+                // Specify the output folder for debug output
+                let output_folder = "test1_output";
+                // Construct the complete file path
+                let mut file_path = PathBuf::from(output_folder);
+                file_path.push(format!("{}.json", filename));
+                write_json_to_file(&file_path, &standard_json)?;
+                //---------------------------------------//
+
                 // Apply remappings for each contract dependency
                 for (_path, _source) in &mut standard_json.sources {
-                    // remap_source_path(_path, &self.remappings);
+                    remap_source_path(_path, &self.remappings);
                     _source.content = self.remap_source_content(_source.content.to_string()).into();
                 }
 
@@ -272,13 +288,6 @@ impl ZkSolc {
                     )));
                 }
 
-                //Get filename from contract_path
-                let filename = contract_path
-                    .file_name()
-                    .expect("Failed to extract filename")
-                    .to_str()
-                    .expect("Failed to convert filename to str");
-
                 // Step 6: Handle Output (Errors and Warnings)
                 self.handle_output(output, filename.to_string(), &mut displayed_warnings);
             }
@@ -308,8 +317,6 @@ impl ZkSolc {
             .to_str()
             .unwrap_or_else(|| panic!("Error configuring solc compiler."))
             .to_string();
-
-        println!("project paths: {:?}", self.project.paths);
 
         // Build compiler arguments
         let mut comp_args = Vec::<String>::new();
@@ -908,10 +915,29 @@ fn remap_source_path(source_path: &mut PathBuf, remappings: &[RelativeRemapping]
         // If a split occurs, parts.next() will be Some(...), and we reconstruct the path using the replacement path
         if let Some(_before) = parts.next() {
             if let Some(after) = parts.next() {
-                println!("before: {}, after: {}", _before, after);
-                *source_path = r.path.path.join(after);
+                let temp_path = r.path.path.join(after);
+
+                *source_path =
+                    PathBuf::from(temp_path.to_str().unwrap().replace("src/src/", "src/"));
                 break;
             }
         }
     }
+}
+
+fn write_json_to_file(path: &Path, json: &StandardJsonCompilerInput) -> Result<(), Error> {
+    // Create the output folder if it doesn't exist
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| Error::msg(format!("Failed to create output folder: {}", e)))?;
+    }
+
+    let file =
+        File::create(path).map_err(|e| Error::msg(format!("Failed to create file: {}", e)))?;
+    let pretty_json = serde_json::to_string_pretty(json)
+        .map_err(|e| Error::msg(format!("Failed to serialize to JSON: {}", e)))?;
+    std::fs::write(path, pretty_json.as_bytes())
+        .map_err(|e| Error::msg(format!("Failed to write to file: {}", e)))?;
+
+    Ok(())
 }
