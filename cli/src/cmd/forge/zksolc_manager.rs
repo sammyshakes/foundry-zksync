@@ -56,9 +56,10 @@ pub enum ZkSolcVersion {
     V139,
     V1310,
     V1311,
+    V1314,
 }
 
-pub const DEFAULT_ZKSOLC_VERSION: &str = "v1.3.11";
+pub const DEFAULT_ZKSOLC_VERSION: &str = "v1.3.14";
 
 /// `parse_version` parses a string representation of a `zksolc` compiler version
 /// and returns the `ZkSolcVersion` enum variant if it matches a supported version.
@@ -80,6 +81,7 @@ fn parse_version(version: &str) -> Result<ZkSolcVersion> {
         "v1.3.9" => Ok(ZkSolcVersion::V139),
         "v1.3.10" => Ok(ZkSolcVersion::V1310),
         "v1.3.11" => Ok(ZkSolcVersion::V1311),
+        "v1.3.14" => Ok(ZkSolcVersion::V1314),
         _ => Err(Error::msg(
             "ZkSolc compiler version not supported. Proper version format: 'v1.3.x'",
         )),
@@ -101,6 +103,7 @@ impl ZkSolcVersion {
             ZkSolcVersion::V139 => "v1.3.9",
             ZkSolcVersion::V1310 => "v1.3.10",
             ZkSolcVersion::V1311 => "v1.3.11",
+            ZkSolcVersion::V1314 => "v1.3.14",
         }
     }
 }
@@ -548,7 +551,7 @@ impl ZkSolcManager {
     pub fn download(&self) -> Result<()> {
         if self.exists() {
             // TODO: figure out better don't download if compiler is downloaded
-            return Ok(())
+            return Ok(());
         }
 
         let url = self
@@ -576,7 +579,7 @@ impl ZkSolcManager {
             return Err(Error::msg(format!(
                 "Failed to download file: status code {}",
                 response.status()
-            )))
+            )));
         }
         Ok(())
     }
