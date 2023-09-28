@@ -358,8 +358,8 @@ impl ZkSolc {
         comp_args.push(self.project.paths.root.to_str().unwrap().to_string());
         comp_args.push("--allow-paths".to_string());
         comp_args.push(self.project.allowed_paths.to_string());
-        // comp_args.push("--include-path".to_string());
-        // comp_args.push("node_modules".to_string());
+        comp_args.push("--include-path".to_string());
+        comp_args.push("node_modules".to_string());
 
         // Check if system mode is enabled or if the source path contains "is-system"
         if self.is_system || contract_path.to_str().unwrap().contains("is-system") {
