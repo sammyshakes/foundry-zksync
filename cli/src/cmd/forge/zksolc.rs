@@ -236,12 +236,17 @@ impl ZkSolc {
                 // println!("Data written to {:?}", file_path);
                 //---------------------------------------//
 
-                // Apply remappings for each contract dependency
+                // // Apply remappings for each contract dependency
                 // for (path, source) in &mut standard_json.sources {
-                //     println!("Path: {:?}", path);
+                //     // println!("Path: {:?}", path);
                 //     let resolved_path =
                 //         resolve_import_path(path.to_str().unwrap(), &self.remappings);
-                //     println!("Resolved Path: {:?}", resolved_path);
+
+                //     //print resolved path if it is different from original path
+                //     if resolved_path.to_str().unwrap() != path.to_str().unwrap() {
+                //         println!("Path: {:?}", path);
+                //         println!("Resolved Path: {:?}", resolved_path);
+                //     }
                 //     *path = resolved_path;
                 //     source.content = self.remap_source_content(source.content.to_string()).into();
                 // }
