@@ -235,26 +235,33 @@ impl ZkSolc {
                 write_json_to_file(&file_path, &standard_json)?;
                 // println!("Data written to {:?}", file_path);
                 //---------------------------------------//
+                //print contract path
+                println!("Contract Path: {:?}", contract_path);
 
-                // // Apply remappings for each contract dependency
+                // Apply remappings for each contract dependency solidity approach with debug prints
                 // for (path, source) in &mut standard_json.sources {
                 //     // println!("Path: {:?}", path);
-                //     let resolved_path =
-                //         resolve_import_path(path.to_str().unwrap(), &self.remappings);
+                //     // let resolved_path =
+                //     //     resolve_import_path(path.to_str().unwrap(), &self.remappings);
 
-                //     //print resolved path if it is different from original path
-                //     if resolved_path.to_str().unwrap() != path.to_str().unwrap() {
-                //         println!("Path: {:?}", path);
-                //         println!("Resolved Path: {:?}", resolved_path);
-                //     }
-                //     *path = resolved_path;
-                //     source.content = self.remap_source_content(source.content.to_string()).into();
+                //     // //print resolved path if it is different from original path
+                //     // if resolved_path.to_str().unwrap() != path.to_str().unwrap() {
+                //     //     println!("Path: {:?}", path);
+                //     //     println!("Resolved Path: {:?}", resolved_path);
+                //     // }
+                //     // *path = resolved_path;
+                //     let remapped_content = remap_source_content(&source.content, &self.remappings);
+                //     source.content = remapped_content.into();
                 // }
 
                 // Apply remappings for each contract dependency
                 for (_path, _source) in &mut standard_json.sources {
                     remap_source_path(_path, &self.remappings);
-                    _source.content = self.remap_source_content(_source.content.to_string()).into();
+                    // _source.content = self.remap_source_content(_source.content.to_string()).into();
+
+                    // solidity approach to remapping content wip 
+                    let remapped_content = remap_source_content(&_source.content, &self.remappings);
+                    _source.content = remapped_content.into();
                 }
 
                 self.standard_json = Some(standard_json);
@@ -311,7 +318,7 @@ impl ZkSolc {
                         self.compiler_path,
                         contract_path,
                         &comp_args
-                    )));
+                    )))?
                 }
 
                 //Get filename from contract_path
@@ -363,8 +370,13 @@ impl ZkSolc {
         comp_args.push(self.project.paths.root.to_str().unwrap().to_string());
         comp_args.push("--allow-paths".to_string());
         comp_args.push(self.project.allowed_paths.to_string());
-        comp_args.push("--include-path".to_string());
-        comp_args.push("node_modules".to_string());
+        // comp_args.push("--include-path".to_string());
+        // comp_args.push("../../../mud/packages".to_string());
+        // comp_args.push("--include-path".to_string());
+        // comp_args.push("./node_modules".to_string());
+        // comp_args.push("--include-path".to_string());
+        // comp_args.push("/home/shakes/pineapple/mud/mud-pw/mud/packages/contracts/node_modules".to_string());
+        
 
         // Check if system mode is enabled or if the source path contains "is-system"
         if self.is_system || contract_path.to_str().unwrap().contains("is-system") {
@@ -863,6 +875,35 @@ fn replace_imports_with_placeholders(content: String, remappings: &[RelativeRema
     replaced_content
 }
 
+// fn replace_imports_with_placeholders(content: String, remappings: &[RelativeRemapping]) -> String {
+//     let mut replaced_content = content;
+
+//     for (i, remapping) in remappings.iter().enumerate() {
+//         let placeholder = format!("REMAP_PLACEHOLDER_{}", i);
+//         let pattern = format!(
+//             r#"import\s+((?:\{{.*?\}}\s+from\s+)?)\s*"{}(?P<rest>[^"]*)""#,
+//             regex::escape(&remapping.name)
+//         );
+
+//         let replacement_callback = |captures: &regex::Captures| -> String {
+//             let matched_path = PathBuf::from(captures.name("rest").unwrap().as_str());
+//             let canonical_path = matched_path.canonicalize().unwrap_or(matched_path);
+//             let import_prefix = if let Some(m) = captures.get(1) {
+//                 m.as_str()
+//             } else {
+//                 ""
+//             };
+//             format!(r#"import {}"{}{}""#, import_prefix, placeholder, canonical_path.to_str().unwrap())
+//         };
+        
+
+//         replaced_content = Regex::new(&pattern).unwrap().replace_all(&replaced_content, replacement_callback).into_owned();
+//     }
+
+//     replaced_content
+// }
+
+
 /// Substitutes remapped paths in the provided content.
 /// The function iteratively replaces placeholders with the corresponding remapped paths.
 ///
@@ -902,6 +943,32 @@ fn substitute_remapped_paths(content: String, remappings: &[RelativeRemapping]) 
 
     substituted
 }
+
+// fn substitute_remapped_paths(content: String, remappings: &[RelativeRemapping]) -> String {
+//     let mut substituted = content;
+
+//     loop {
+//         let mut made_replacements = false;
+
+//         for (i, r) in remappings.iter().enumerate() {
+//             let placeholder = format!("REMAP_PLACEHOLDER_{}", i);
+//             let canonical_import_path = r.path.path.canonicalize().unwrap_or(r.path.path.clone());
+//             let new_substituted = substituted.replace(&placeholder, canonical_import_path.to_str().unwrap());
+
+//             if new_substituted != substituted {
+//                 made_replacements = true;
+//                 substituted = new_substituted;
+//             }
+//         }
+
+//         if !made_replacements {
+//             break;
+//         }
+//     }
+
+//     substituted
+// }
+
 
 /// Modifies a source file path in-place based on the first applicable remapping found in the provided remappings array.
 ///
@@ -947,6 +1014,62 @@ fn remap_source_path(source_path: &mut PathBuf, remappings: &[RelativeRemapping]
     }
 }
 
+// THIS version uses canonilize() to get the absolute path
+// fn remap_source_path(source_path: &mut PathBuf, remappings: &[RelativeRemapping]) {
+//     let source_path_str = source_path.to_str().expect("Failed to convert path to str");
+
+//     for r in remappings.iter() {
+//         let prefix = &r.name; // The name field of the RelativeRemapping struct
+
+//         if let Some(after) = source_path_str.strip_prefix(prefix) {
+//             let temp_path = r.path.path.join(after);
+//             *source_path = PathBuf::from(temp_path.to_str().unwrap().replace("src/src/", "src/"));
+
+//             // Canonicalize the path here
+//             *source_path = source_path.canonicalize().expect("Failed to canonicalize path");
+//             break;
+//         }
+//     }
+// }
+
+
+// This uses more of a solidity approach to remapping
+fn remap_source_content(content: &str, remappings: &[RelativeRemapping]) -> String {
+    let regex = Regex::new(r#"import\s+((?:\{.*?\}\s+from\s+)?)\s*"(?P<path>[^"]*)""#).unwrap();
+
+    let mut replacements: Vec<(String, String)> = Vec::new();
+
+    for captures in regex.captures_iter(content) {
+        if let Some(import_path) = captures.name("path") {
+            let remapped_path = remap_solc_style(import_path.as_str(), remappings);
+            if remapped_path != import_path.as_str() {
+                replacements.push((import_path.as_str().to_string(), remapped_path));
+            }
+        }
+    }
+
+    let mut remapped_content = content.to_string();
+    for (orig, repl) in replacements {
+        remapped_content = remapped_content.replace(&orig, &repl);
+    }
+
+    remapped_content
+}
+
+
+
+
+fn remap_solc_style(import_path: &str, remappings: &[RelativeRemapping]) -> String {
+    for r in remappings.iter() {
+        if let Some(after) = import_path.strip_prefix(&r.name) {
+            return r.path.path.join(after).to_str().unwrap().to_string();
+        }
+    }
+    import_path.to_string()
+}
+
+
+//utilty function to write json to file
 fn write_json_to_file(path: &Path, json: &StandardJsonCompilerInput) -> Result<(), Error> {
     // Create the output folder if it doesn't exist
     if let Some(parent) = path.parent() {
