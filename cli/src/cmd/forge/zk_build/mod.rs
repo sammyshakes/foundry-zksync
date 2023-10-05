@@ -47,6 +47,8 @@ use foundry_config::{
 use serde::Serialize;
 use std::fmt::Debug;
 
+pub mod skip;
+
 foundry_config::merge_impl_figment_convert!(ZkBuildArgs, args);
 
 /// The `ZkBuildArgs` struct encapsulates the parameters required for the zkSync contract
