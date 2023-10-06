@@ -259,7 +259,7 @@ NOTE: Currently, until `forge remappings` are implemented, import paths must be 
 
 ## `SimpleFactory.sol` and `AAFactory.sol` are in the `src/is-system/` folder.
 
-## Using the `--skip` Filter During Compilation with `zkforge zk-build`
+## Using the `--skip` filter with `zkforge zk-build`
 
 ### Skipping Specific Files During Compilation
 
