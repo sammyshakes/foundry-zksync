@@ -1,3 +1,5 @@
+use self::skip::SkipBuildFilter;
+
 /// The `zkbuild` module provides comprehensive functionality for the compilation of zkSync
 /// smart contracts with a specified Solidity compiler version.
 ///
@@ -93,6 +95,13 @@ pub struct ZkBuildArgs {
     )]
     #[serde(skip)]
     pub use_zksolc: String,
+
+    /// Skip building files whose names contain the given filter.
+    ///
+    /// `test` and `script` are aliases for `.t.sol` and `.s.sol`.
+    #[clap(long, num_args(1..))]
+    #[serde(skip)]
+    pub skip: Option<Vec<SkipBuildFilter>>,
 
     /// A flag indicating whether to enable the system contract compilation mode.
     #[clap(
@@ -216,6 +225,7 @@ impl ZkBuildArgs {
             compiler_path: zksolc_manager.get_full_compiler_path(),
             is_system: self.is_system,
             force_evmla: self.force_evmla,
+            skip: self.skip.clone(),
         };
 
         let zksolc = ZkSolc::new(zksolc_opts, project);

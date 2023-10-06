@@ -45,15 +45,18 @@ use std::{
     fmt, fs,
     fs::File,
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{exit, Command, Stdio},
 };
+
+use super::zk_build::skip::SkipBuildFilter;
 
 #[derive(Debug, Clone)]
 pub struct ZkSolcOpts {
     pub compiler_path: PathBuf,
     pub is_system: bool,
     pub force_evmla: bool,
+    pub skip: Option<Vec<SkipBuildFilter>>,
 }
 
 /// Files that should be compiled with a given solidity version.
@@ -114,6 +117,7 @@ pub struct ZkSolc {
     force_evmla: bool,
     standard_json: Option<StandardJsonCompilerInput>,
     sources: Option<BTreeMap<Solc, SolidityVersionSources>>,
+    skip: Vec<SkipBuildFilter>,
 }
 
 impl fmt::Display for ZkSolc {
@@ -139,6 +143,7 @@ impl ZkSolc {
             force_evmla: opts.force_evmla,
             standard_json: None,
             sources: None,
+            skip: opts.skip.unwrap_or_default(),
         }
     }
 
@@ -227,14 +232,19 @@ impl ZkSolc {
             for source in version.1 {
                 let contract_path = source.0.clone();
 
-                // Check if the contract_path is in 'sources' directory or its subdirectories
-                let is_in_sources_dir = contract_path
-                    .ancestors()
-                    .any(|ancestor| ancestor.starts_with(&self.project.paths.sources));
+                //Get filename from contract_path
+                let filename = contract_path
+                    .file_name()
+                    .expect("Failed to extract filename")
+                    .to_str()
+                    .expect("Failed to convert filename to str");
 
-                // Skip this file if it's not in the 'sources' directory or its subdirectories
-                if !is_in_sources_dir {
-                    continue
+                if self.should_skip_compilation(filename, &self.skip) {
+                    continue;
+                }
+
+                if !self.is_in_sources_dir(&contract_path) {
+                    continue;
                 }
 
                 // Step 3: Parse JSON Input for each Source
@@ -272,24 +282,8 @@ impl ZkSolc {
                         self.compiler_path,
                         contract_path,
                         &comp_args
-                    )))
+                    )));
                 }
-
-                let filename = contract_path
-                    .to_str()
-                    .expect("Unable to convert source to string")
-                    .split(
-                        self.project
-                            .paths
-                            .root
-                            .to_str()
-                            .expect("Unable to convert source to string"),
-                    )
-                    .nth(1)
-                    .expect("Failed to get Contract relative path")
-                    .split('/')
-                    .last()
-                    .expect("Failed to get Contract filename.");
 
                 // Step 6: Handle Output (Errors and Warnings)
                 self.handle_output(output, filename.to_string(), &mut displayed_warnings);
@@ -695,6 +689,94 @@ impl ZkSolc {
 
         // Step 4: Retrieve Solc Version
         versions.get(&self.project).map_err(|e| Error::msg(format!("Could not get solc: {}", e)))
+    }
+
+    /// Determines whether a contract should skip the compilation process based on the specified filter.
+    ///
+    /// # Workflow:
+    /// 1. Check Skip File Condition:
+    ///    - Utilizes `should_skip_file` method to check if the contract file name
+    ///      matches the criteria to be skipped based on the filter provided through `--skip` flag.
+    ///
+    /// 2. Validate Source Directory:
+    ///    - Invokes `is_in_sources_dir` to verify that the contract is situated
+    ///      in the 'sources' directory or its subdirectories.
+    ///
+    /// # Arguments
+    ///
+    /// * `self` - A reference to the instance.
+    /// * `contract_path` - A reference to a `Path` instance representing the contract path.
+    /// * `skip_filter` - A `SkipBuildFilter` instance which dictates the filter criteria for skipping files.
+    ///
+    /// # Returns
+    ///
+    /// A `bool` indicating whether or not the contract should skip the compilation.
+    /// Returns `true` if it should skip, and `false` otherwise.
+    pub fn should_skip_compilation(
+        &self,
+        file_name: &str,
+        skip_filter: &Vec<SkipBuildFilter>,
+    ) -> bool {
+        if self.should_skip_file(file_name, skip_filter) {
+            return true;
+        }
+
+        false
+    }
+
+    /// Determines whether a contract file should be skipped during compilation based on provided filters.
+    ///
+    /// The function iterates through `skip_filters` and evaluates whether the filename matches any of the filters and
+    /// should be skipped during compilation. Two primary checks are performed:
+    /// 1. **Custom Filter**: For a custom filter string, it verifies whether the filename, with or without `.sol`,
+    ///    exactly matches the filter.
+    /// 2. **Pattern-Based Filters**: For predefined filters (`Tests` and `Scripts`), it checks if the filename ends
+    ///    with a particular pattern (`.t.sol` or `.s.sol`).
+    ///
+    /// The function returns `true` if any filter indicates that the file should be skipped, otherwise `false`. If the filename
+    /// cannot be derived from `contract_path`, it also returns `false`.
+    ///
+    /// # Arguments
+    ///
+    /// * `self` - A reference to the instance on which this method is invoked.
+    /// * `contract_path` - A `Path` reference for the contract file being evaluated.
+    /// * `skip_filters` - A vector of `SkipBuildFilter` instances, defining the filter logic to determine skip status.
+    ///
+    /// # Returns
+    ///
+    /// A boolean indicating whether the file at `contract_path` should be skipped (`true`) or not (`false`).
+    fn should_skip_file(&self, file_name: &str, skip_filters: &Vec<SkipBuildFilter>) -> bool {
+        return skip_filters.iter().any(|filter| {
+            match filter {
+                // Custom filter check for the entire filename (without extension) match
+                SkipBuildFilter::Custom(custom) => {
+                    let should_skip = file_name == custom || file_name == format!("{}.sol", custom);
+                    should_skip
+                }
+                // Default behavior for Tests and Scripts filter
+                _ => file_name.ends_with(filter.file_pattern()),
+            }
+        });
+    }
+
+    /// Validates if a contract path is within the 'sources' directory or its subdirectories.
+    ///
+    /// # Workflow:
+    /// 1. Ancestor Verification:
+    ///    - Iterates through each ancestor path of `contract_path` using `ancestors`.
+    ///    - Checks if any ancestor path starts with the defined 'sources' path within the project.
+    ///
+    /// # Arguments
+    ///
+    /// * `self` - A reference to the instance.
+    /// * `contract_path` - A reference to a `Path` instance representing the contract path.
+    ///
+    /// # Returns
+    ///
+    /// A `bool` indicating whether the contract is in the 'sources' directory or its subdirectories.
+    /// Returns `true` if it is, and `false` otherwise.
+    fn is_in_sources_dir(&self, contract_path: &Path) -> bool {
+        contract_path.ancestors().any(|ancestor| ancestor.starts_with(&self.project.paths.sources))
     }
 
     /// Builds the path for saving the artifacts (compiler output) of a contract based on the
